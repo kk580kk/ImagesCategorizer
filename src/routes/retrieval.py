@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 
 # 导入我们的模型
-from src.models.retrieval_engine import RetrievalEngine
+from models.retrieval_engine_enhanced import EnhancedRetrievalEngine
 from src.utils.visualization import VisualizationTools
 
 # 配置日志
@@ -36,7 +36,7 @@ def init_retrieval_engine():
             
             # 初始化检索引擎
             db_path = os.path.join(data_dir, 'vector_db')
-            retrieval_engine = RetrievalEngine(db_path)
+            retrieval_engine = EnhancedRetrievalEngine()
             
             # 初始化可视化工具
             viz_dir = os.path.join(data_dir, 'visualizations')
