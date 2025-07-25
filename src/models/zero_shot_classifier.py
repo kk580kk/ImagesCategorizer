@@ -90,7 +90,7 @@ class ZeroShotClassifier:
     
     def classify_image(self, image_path):
         """
-        对单张图像进行零样本分类
+        对单张图像进行零样本分类，使用多角度分析提高准确性
         
         Args:
             image_path: 图像文件路径
@@ -106,27 +106,208 @@ class ZeroShotClassifier:
                 logger.error(f"图像文件不存在: {image_path}")
                 return None
             
-            # 方法1: 使用Qwen-VL直接分类
-            direct_result = self.qwen_model.classify_image(image_path, self.categories)
+            # 使用qwen-vl-plus进行多角度分析和分类
+            qwen_result = self.qwen_model.classify_image(image_path, self.categories)
             
-            # 方法2: 使用embedding相似度分类
-            embedding_result = self._classify_by_embedding(image_path)
+            if qwen_result and qwen_result.get('category'):
+                # 验证分类结果的合理性
+                validated_result = self._validate_classification(qwen_result, image_path)
+                
+                # 记录分类历史
+                classification_record = {
+                    'image_path': image_path,
+                    'result': validated_result,
+                    'timestamp': self._get_timestamp()
+                }
+                self.classification_history.append(classification_record)
+                
+                logger.info(f"分类完成: {validated_result['category']} (置信度: {validated_result['confidence']:.3f})")
+                return validated_result
+            else:
+                # 如果qwen分类失败，使用embedding相似度分类
+                logger.warning("qwen分类失败，使用embedding相似度分类")
+                return self._embedding_based_classification(image_path)
+                
+        except Exception as e:
+            logger.error(f"零样本分类失败: {e}")
+            return {
+                'category': 'unknown',
+                'confidence': 0.0,
+                'method': 'error',
+                'reason': f'分类失败: {str(e)}'
+            }
+    
+    def _validate_classification(self, qwen_result, image_path):
+        """
+        验证和优化分类结果
+        
+        Args:
+            qwen_result: qwen模型的分类结果
+            image_path: 图像路径
             
-            # 综合两种方法的结果
-            final_result = self._combine_classification_results(
-                direct_result, embedding_result, image_path
-            )
+        Returns:
+            dict: 验证后的分类结果
+        """
+        try:
+            category = qwen_result.get('category', 'unknown')
+            confidence = qwen_result.get('confidence', 0.5)
+            reason = qwen_result.get('reason', '')
+            method = qwen_result.get('method', 'qwen_vl')
             
-            # 记录分类历史
-            self.classification_history.append(final_result)
+            # 特殊验证规则
+            validated_result = {
+                'category': category,
+                'confidence': confidence,
+                'reason': reason,
+                'method': method,
+                'validation_notes': []
+            }
             
-            logger.info(f"图像分类完成: {image_path}, 类别: {final_result.get('category', 'unknown')}")
+            # 如果有多角度分析结果，进行额外验证
+            if 'analysis_details' in qwen_result:
+                analysis = qwen_result['analysis_details']
+                validated_result = self._cross_validate_with_analysis(validated_result, analysis)
             
-            return final_result
+            # 置信度调整
+            if confidence > 0.9 and category in ['人物', '运动']:
+                # 对于容易混淆的类别，降低过高的置信度
+                if '运动' in reason and '人物' in str(analysis.get('person_features', '')):
+                    validated_result['confidence'] = min(confidence, 0.8)
+                    validated_result['validation_notes'].append('人物-运动混淆风险，置信度调整')
+            
+            return validated_result
             
         except Exception as e:
-            logger.error(f"图像分类失败: {image_path}, {e}")
-            return None
+            logger.error(f"分类验证失败: {e}")
+            return qwen_result
+    
+    def _cross_validate_with_analysis(self, result, analysis):
+        """
+        基于多角度分析进行交叉验证
+        
+        Args:
+            result: 初始分类结果
+            analysis: 多角度分析结果
+            
+        Returns:
+            dict: 交叉验证后的结果
+        """
+        try:
+            category = result['category']
+            person_features = analysis.get('person_features', '').lower()
+            activity_features = analysis.get('activity_features', '').lower()
+            basic_content = analysis.get('basic_content', '').lower()
+            
+            # 人物vs运动的特殊验证
+            if category == '运动':
+                # 检查是否真的是运动场景
+                sport_keywords = ['体育', '运动', '健身', '球类', '跑步', '游泳', '篮球', '足球', '网球']
+                non_sport_keywords = ['肖像', '特写', '证件照', '头像', '人物照', '无人物', '静态']
+                
+                has_sport = any(keyword in activity_features for keyword in sport_keywords)
+                has_non_sport = any(keyword in person_features for keyword in non_sport_keywords)
+                
+                if has_non_sport and not has_sport:
+                    # 可能是人物被误分类为运动
+                    result['category'] = '人物'
+                    result['confidence'] = max(0.6, result['confidence'] * 0.8)
+                    result['reason'] = f"交叉验证修正：{result['reason']} -> 检测到人物特征，修正为人物分类"
+                    result['validation_notes'].append('运动->人物修正')
+                    
+            elif category == '人物':
+                # 检查是否真的是人物场景
+                if '运动' in activity_features and '体育' in activity_features:
+                    # 可能需要重新考虑是否为运动
+                    if result['confidence'] < 0.7:
+                        result['validation_notes'].append('人物分类中检测到运动特征，需要人工确认')
+            
+            # 添加分析摘要
+            result['analysis_summary'] = {
+                'has_person': '人物' in person_features or '人' in basic_content,
+                'has_sport': any(word in activity_features for word in ['运动', '体育', '健身']),
+                'scene_type': self._extract_scene_type(analysis.get('scene_features', ''))
+            }
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"交叉验证失败: {e}")
+            return result
+    
+    def _extract_scene_type(self, scene_features):
+        """从场景特征中提取场景类型"""
+        scene_features = scene_features.lower()
+        
+        if '室内' in scene_features:
+            return 'indoor'
+        elif '室外' in scene_features:
+            return 'outdoor'
+        elif '运动场' in scene_features or '体育场' in scene_features:
+            return 'sports_venue'
+        elif '工作室' in scene_features or '摄影棚' in scene_features:
+            return 'studio'
+        else:
+            return 'unknown'
+    
+    def _embedding_based_classification(self, image_path):
+        """
+        基于embedding的分类方法（备用）
+        
+        Args:
+            image_path: 图像文件路径
+            
+        Returns:
+            dict: 分类结果
+        """
+        try:
+            # 提取图像特征
+            image_description = self.qwen_model.extract_image_features(image_path)
+            if not image_description:
+                return {
+                    'category': 'unknown',
+                    'confidence': 0.0,
+                    'method': 'embedding_failed',
+                    'reason': '特征提取失败'
+                }
+            
+            # 生成图像embedding
+            image_embedding = self.embedding_generator.text_to_embedding(image_description)
+            
+            # 计算与各类别的相似度
+            similarities = {}
+            for category, category_data in self.category_embeddings.items():
+                category_embedding = category_data['embedding']
+                similarity = self.embedding_generator.calculate_similarity(
+                    image_embedding, category_embedding
+                )
+                similarities[category] = similarity
+            
+            # 找到最相似的类别
+            best_category = max(similarities, key=similarities.get)
+            best_similarity = similarities[best_category]
+            
+            return {
+                'method': 'embedding',
+                'category': best_category,
+                'confidence': float(best_similarity),
+                'similarities': similarities,
+                'image_description': image_description,
+                'reason': f'基于特征相似度分类，相似度: {best_similarity:.3f}'
+            }
+            
+        except Exception as e:
+            logger.error(f"Embedding分类失败: {e}")
+            return {
+                'category': 'unknown',
+                'confidence': 0.0,
+                'method': 'embedding_error',
+                'reason': f'Embedding分类失败: {str(e)}'
+            }
+    
+    def _get_timestamp(self):
+        """获取当前时间戳"""
+        import datetime
+        return datetime.datetime.now().isoformat()
     
     def _classify_by_embedding(self, image_path):
         """
