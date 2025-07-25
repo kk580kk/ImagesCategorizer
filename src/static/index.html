@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图文检索系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .main-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            margin: 20px auto;
+            max-width: 1200px;
+            padding: 30px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: #333;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: rgba(102, 126, 234, 0.05);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: rgba(118, 75, 162, 0.1);
+            transform: translateY(-2px);
+        }
+        
+        .upload-area.dragover {
+            border-color: #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+        
+        .search-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin: 30px 0;
+        }
+        
+        .search-input {
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .search-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 10px;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .results-container {
+            margin-top: 30px;
+        }
+        
+        .result-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+        
+        .result-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .result-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+        
+        .result-info {
+            padding: 20px;
+        }
+        
+        .similarity-badge {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .category-badge {
+            background: linear-gradient(45deg, #ffc107, #fd7e14);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-left: 10px;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .stats-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin: 30px 0;
+        }
+        
+        .alert {
+            border-radius: 10px;
+            border: none;
+        }
+        
+        .nav-tabs {
+            border-bottom: 2px solid #e9ecef;
+            margin-bottom: 30px;
+        }
+        
+        .nav-tabs .nav-link {
+            border: none;
+            border-radius: 10px 10px 0 0;
+            color: #667eea;
+            font-weight: 600;
+            padding: 15px 25px;
+        }
+        
+        .nav-tabs .nav-link.active {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="main-container">
+            <div class="header">
+                <h1><i class="fas fa-search"></i> 图文检索系统</h1>
+                <p class="lead">基于AI的智能图像检索与分类系统</p>
+            </div>
+            
+            <!-- 导航标签 -->
+            <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="search-tab" data-bs-toggle="tab" data-bs-target="#search-panel" type="button" role="tab">
+                        <i class="fas fa-search"></i> 图像检索
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-panel" type="button" role="tab">
+                        <i class="fas fa-upload"></i> 上传图像
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="classify-tab" data-bs-toggle="tab" data-bs-target="#classify-panel" type="button" role="tab">
+                        <i class="fas fa-tags"></i> 图像分类
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats-panel" type="button" role="tab">
+                        <i class="fas fa-chart-bar"></i> 统计信息
+                    </button>
+                </li>
+            </ul>
+            
+            <div class="tab-content" id="mainTabContent">
+                <!-- 图像检索面板 -->
+                <div class="tab-pane fade show active" id="search-panel" role="tabpanel">
+                    <div class="search-container">
+                        <h3><i class="fas fa-search"></i> 文本检索图像</h3>
+                        <p class="text-muted">输入描述文本，系统将返回最相似的9张图像</p>
+                        
+                        <div class="row">
+                            <div class="col-md-8">
+                                <input type="text" class="form-control search-input" id="searchInput" 
+                                       placeholder="例如：可爱的小猫、现代建筑、红色汽车...">
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-primary w-100" onclick="searchImages()">
+                                    <i class="fas fa-search"></i> 搜索图像
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="searchLoading">
+                        <div class="spinner"></div>
+                        <p>正在搜索相似图像...</p>
+                    </div>
+                    
+                    <div class="results-container" id="searchResults"></div>
+                </div>
+                
+                <!-- 上传图像面板 -->
+                <div class="tab-pane fade" id="upload-panel" role="tabpanel">
+                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                        <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                        <h4>点击或拖拽上传图像</h4>
+                        <p class="text-muted">支持 PNG, JPG, JPEG, GIF, BMP 格式</p>
+                        <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="uploadImage()">
+                    </div>
+                    
+                    <div class="loading" id="uploadLoading">
+                        <div class="spinner"></div>
+                        <p>正在处理图像...</p>
+                    </div>
+                    
+                    <div id="uploadResult"></div>
+                </div>
+                
+                <!-- 图像分类面板 -->
+                <div class="tab-pane fade" id="classify-panel" role="tabpanel">
+                    <div class="search-container">
+                        <h3><i class="fas fa-tags"></i> 图像分类</h3>
+                        <p class="text-muted">上传图像进行零样本分类，支持10个类别</p>
+                        
+                        <div class="upload-area" onclick="document.getElementById('classifyFileInput').click()">
+                            <i class="fas fa-image fa-3x text-primary mb-3"></i>
+                            <h4>选择要分类的图像</h4>
+                            <p class="text-muted">系统将自动识别图像类别</p>
+                            <input type="file" id="classifyFileInput" accept="image/*" style="display: none;" onchange="classifyImage()">
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="classifyLoading">
+                        <div class="spinner"></div>
+                        <p>正在分析图像...</p>
+                    </div>
+                    
+                    <div id="classifyResult"></div>
+                </div>
+                
+                <!-- 统计信息面板 -->
+                <div class="tab-pane fade" id="stats-panel" role="tabpanel">
+                    <div class="stats-container">
+                        <h3><i class="fas fa-chart-bar"></i> 系统统计</h3>
+                        <button class="btn btn-primary" onclick="loadStatistics()">
+                            <i class="fas fa-sync-alt"></i> 刷新统计
+                        </button>
+                        <button class="btn btn-danger ms-2" onclick="clearDatabase()">
+                            <i class="fas fa-trash"></i> 清空数据库
+                        </button>
+                    </div>
+                    
+                    <div class="loading" id="statsLoading">
+                        <div class="spinner"></div>
+                        <p>正在加载统计信息...</p>
+                    </div>
+                    
+                    <div id="statsResult"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
+
